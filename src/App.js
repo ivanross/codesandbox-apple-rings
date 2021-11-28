@@ -1,4 +1,4 @@
-import { range } from "d3";
+import { interpolateRgb } from "d3";
 import { useRef, useState } from "react";
 import "./styles.css";
 
@@ -45,6 +45,7 @@ export default function App() {
 
 const SVG = ({ progress }) => {
   const width = 400;
+
   const height = 400;
 
   const angle = progress * Math.PI * 2;
@@ -62,7 +63,7 @@ const SVG = ({ progress }) => {
       <rect width="100%" height="100%" fill="black" />
 
       <AppleRing
-        color="#df355a"
+        colors={["#e63754", "#e64c85"]}
         cx={width / 2}
         cy={height / 2}
         angle={angle}
@@ -70,7 +71,7 @@ const SVG = ({ progress }) => {
         strokeWidth={strokeWidth}
       />
       <AppleRing
-        color="#c1fb50"
+        colors={["#e0fc52", "#b2fb4f"]}
         cx={width / 2}
         cy={height / 2}
         angle={angle}
@@ -78,7 +79,7 @@ const SVG = ({ progress }) => {
         strokeWidth={strokeWidth}
       />
       <AppleRing
-        color="#72f9f5"
+        colors={["#75fbb0", "#60d6fa"]}
         cx={width / 2}
         cy={height / 2}
         angle={angle}
@@ -95,10 +96,10 @@ const AppleRing = ({
   strokeWidth,
   cx = 0,
   cy = 0,
-  color,
+  colors,
   phase: initialPhase = -Math.PI / 2
 }) => {
-  const partitionStep = Math.PI * 2 * 0.875;
+  const partitionStep = Math.PI;
 
   const ringAngle = Math.min(angle, Math.PI * 2);
   const rotationAngle = angle - ringAngle;
@@ -106,7 +107,9 @@ const AppleRing = ({
 
   const partitionAngles = partitionOnce(ringAngle, partitionStep).reverse();
   const segments = cumulate(partitionAngles);
-  const [gradientSegment, solidSegment] = segments;
+  const [segmentStart, segmentEnd] = segments;
+
+  const colorInterp = interpolateRgb(...colors);
 
   const arcX = (angle) => Math.cos(angle + phase) * radius + cx;
   const arcY = (angle) => Math.sin(angle + phase) * radius + cy;
@@ -118,8 +121,11 @@ const AppleRing = ({
       0 ${segment.value > Math.PI ? 1 : 0} 1 
       ${arcX(segment.to)} ${arcY(segment.to)}`;
 
-  const gradientId = useId();
-  const maskId = useId();
+  const gradientEndId = useId();
+  const gradientStartId = useId();
+  const maskEndId = useId();
+  const maskStartId = useId();
+  const gradientShadowId = useId();
 
   const p1 = {
     x: Math.cos(ringAngle + phase) * 0.5 + 0.5,
@@ -127,23 +133,55 @@ const AppleRing = ({
   };
 
   const p2 = {
-    x: Math.cos(ringAngle + phase - partitionStep) * 0.5 + 0.5,
-    y: Math.sin(ringAngle + phase - partitionStep) * 0.5 + 0.5
+    x: Math.cos(ringAngle + phase - Math.PI) * 0.5 + 0.5,
+    y: Math.sin(ringAngle + phase - Math.PI) * 0.5 + 0.5
   };
 
   const gradientSide = radius * 2 + strokeWidth;
   return (
     <g>
       <defs>
-        <linearGradient id={gradientId} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}>
-          <stop offset="0%" stopColor="black" />
-          <stop offset="60%" stopColor={color} />
+        <linearGradient
+          id={gradientEndId}
+          x1={p1.x}
+          y1={p1.y}
+          x2={p2.x}
+          y2={p2.y}
+        >
+          <stop offset="0%" stopColor={colorInterp(0)} />
+          <stop offset="100%" stopColor={colorInterp(0.5)} />
         </linearGradient>
+
+        <linearGradient
+          id={gradientStartId}
+          x1={p1.x}
+          y1={p1.y}
+          x2={p2.x}
+          y2={p2.y}
+        >
+          <stop offset="0%" stopColor={colorInterp(1)} />
+          <stop offset="100%" stopColor={colorInterp(0.5)} />
+        </linearGradient>
+
+        <radialGradient id={gradientShadowId}>
+          <stop offset="30%" stopColor="black" />
+          <stop offset="100%" stopColor="black" stopOpacity={0} />
+        </radialGradient>
       </defs>
 
-      <mask id={maskId}>
+      <mask id={maskEndId}>
         <path
-          d={path(gradientSegment)}
+          d={path(segmentStart)}
+          strokeWidth={strokeWidth}
+          stroke="white"
+          fill="none"
+          strokeLinecap="round"
+        />
+      </mask>
+
+      <mask id={maskStartId}>
+        <path
+          d={path(segmentEnd)}
           strokeWidth={strokeWidth}
           stroke="white"
           fill="none"
@@ -156,16 +194,25 @@ const AppleRing = ({
         y={cy - gradientSide / 2}
         width={gradientSide}
         height={gradientSide}
-        fill={`url(#${gradientId})`}
-        mask={`url(#${maskId})`}
+        fill={`url(#${gradientEndId})`}
+        mask={`url(#${maskEndId})`}
       />
 
-      <path
-        d={path(solidSegment)}
-        strokeWidth={strokeWidth}
-        stroke={color}
-        fill="none"
-        strokeLinecap="round"
+      <circle
+        r={strokeWidth / 2 + 6}
+        cx={arcX(segmentEnd.to)}
+        cy={arcY(segmentEnd.to)}
+        fill={`url(#${gradientShadowId})`}
+        mask={`url(#${maskEndId})`}
+      />
+
+      <rect
+        x={cx - gradientSide / 2}
+        y={cy - gradientSide / 2}
+        width={gradientSide}
+        height={gradientSide}
+        fill={`url(#${gradientStartId})`}
+        mask={`url(#${maskStartId})`}
       />
     </g>
   );
